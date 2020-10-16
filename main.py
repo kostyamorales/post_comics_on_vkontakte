@@ -9,49 +9,52 @@ def get_comics_quantity():
     url = 'https://xkcd.com/info.0.json'
     response = requests.get(url)
     response.raise_for_status()
-    comics_quantity = response.json()['num']
-    return comics_quantity
+    quantity = response.json()['num']
+    return quantity
 
 
-def download_comic(comics_quantity, filename):
-    random_comic = randint(1, comics_quantity)
+def download_comic(quantity, filename):
+    random_comic = randint(1, quantity)
     url = f'https://xkcd.com/{random_comic}/info.0.json'
     response = requests.get(url)
     response.raise_for_status()
-    url_picture = response.json()['img']
-    comment = response.json()['alt']
+    answer = response.json()
+    url_picture = answer['img']
+    comment = answer['alt']
     picture_response = requests.get(url_picture)
     with open(filename, 'wb') as file:
         file.write(picture_response.content)
     return comment
 
 
-def get_upload_url(params):
+def get_upload_url(parameters):
     url = 'https://api.vk.com/method/photos.getWallUploadServer'
-    response = requests.get(url, params=params)
+    response = requests.get(url, params=parameters)
     response.raise_for_status()
-    upload_url = response.json()['response']['upload_url']
-    return upload_url
+    url = response.json()['response']['upload_url']
+    return url
 
 
-def upload_to_server(upload_url):
-    new_params = {}
+def upload_to_server(url):
     with open('comic.jpg', 'rb') as file:
         files = {
             'photo': file
         }
-        response = requests.post(upload_url, files=files)
+        response = requests.post(url, files=files)
         response.raise_for_status()
-        new_params['photo'] = response.json()['photo']
-        new_params['server'] = response.json()['server']
-        new_params['hash'] = response.json()['hash']
-        return new_params
+        answer = response.json()
+        parameter_photo = answer['photo']
+        parameter_server = answer['server']
+        parameter_hash = answer['hash']
+        return parameter_photo, parameter_server, parameter_hash
 
 
-def save_wall_photo(params, new_params):
-    new_params.update(params)
+def save_wall_photo(parameters, parameter_photo, parameter_server, parameter_hash):
+    parameters['photo'] = parameter_photo
+    parameters['server'] = parameter_server
+    parameters['hash'] = parameter_hash
     url = 'https://api.vk.com/method/photos.saveWallPhoto'
-    response = requests.get(url, params=new_params)
+    response = requests.get(url, params=parameters)
     response.raise_for_status()
     answer = response.json()['response'][0]
     owner_id = answer['owner_id']
@@ -61,8 +64,8 @@ def save_wall_photo(params, new_params):
 
 
 def publish_entry(access_token, ver, group_id, comment, attachments):
-    url = 'https://api.vk.com/method/wall.post'  # Публикация записи в группе
-    params = {
+    url = 'https://api.vk.com/method/wall.post'
+    parameters = {
         'access_token': access_token,
         'v': ver,
         'owner_id': -group_id,
@@ -70,7 +73,7 @@ def publish_entry(access_token, ver, group_id, comment, attachments):
         'from_group': 1,
         'attachments': attachments
     }
-    response = requests.post(url, params=params)
+    response = requests.post(url, params=parameters)
     response.raise_for_status()
 
 
@@ -78,24 +81,23 @@ def cleanse_directory(filename):
     remove(filename)
 
 
-def publish_comic(group_id, access_token, ver_api):
-    params = {
-        'access_token': vk_access_token,
-        'v': ver_api,
-    }
-    file_name = 'comic.jpg'
-    comics_quantity = get_comics_quantity()
-    comic_comment = download_comic(comics_quantity, file_name)
-    upload_url = get_upload_url(params)
-    new_params = upload_to_server(upload_url)
-    attachments = save_wall_photo(params, new_params)
-    publish_entry(access_token, ver_api, group_id, comic_comment, attachments)
-    cleanse_directory(file_name)
-
-
 if __name__ == '__main__':
     load_dotenv()
     vk_group_id = int(getenv('VK_GROUP_ID'))
     vk_access_token = getenv('VK_ACCESS_TOKEN')
     vk_ver_api = 5.124
-    publish_comic(vk_group_id, vk_access_token, vk_ver_api)
+    params = {
+        'access_token': vk_access_token,
+        'v': vk_ver_api,
+    }
+    file_name = 'comic.jpg'
+    try:
+        comics_quantity = get_comics_quantity()
+        comic_comment = download_comic(comics_quantity, file_name)
+        upload_url = get_upload_url(params)
+        param_photo, param_server, param_hash = upload_to_server(upload_url)
+        param_attachments = save_wall_photo(params, param_photo, param_server, param_hash)
+        publish_entry(vk_access_token, vk_ver_api, vk_group_id, comic_comment, param_attachments)
+    finally:
+        cleanse_directory(file_name)
+
